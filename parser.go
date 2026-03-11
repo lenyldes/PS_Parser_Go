@@ -149,43 +149,68 @@ func parseGamesFromURL(url string) []GameInfo {
 
 func parseVoice(filename string) []GameInfo {
 	gameInfo, _ := readFromJSON(filename)
+	var mu sync.Mutex
 
-	for i, game := range gameInfo {
-		url := game.Link
-		resp, err := http.Get(url)
-		if err != nil {
-			panic(err)
-		}
-		defer resp.Body.Close()
-
-		respBody, err := goquery.NewDocumentFromReader(resp.Body)
-		if err != nil {
-			panic(err)
+	for batchStart := 0; batchStart < len(gameInfo); batchStart += 4 {
+		batchEnd := batchStart + 4
+		if batchEnd > len(gameInfo) {
+			batchEnd = len(gameInfo)
 		}
 
-		ps5Voice := respBody.Find("[data-qa$='#ps5Voice-value']").Text()
-		ps5ScreenLanguages := respBody.Find("[data-qa$='#ps5Subtitles-value']").Text()
+		var wg sync.WaitGroup
 
-		ps4Voice := respBody.Find("[data-qa$='#ps4Voice-value']").Text()
-		ps4ScreenLanguages := respBody.Find("[data-qa$='#ps4Subtitles-value']").Text()
+		for i := batchStart; i < batchEnd; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
 
-		voice := respBody.Find("[data-qa$='#voice-value']").Text()
-		screenLanguages := respBody.Find("[data-qa$='#subtitles-value']").Text()
+				game := gameInfo[idx]
+				url := game.Link
+				resp, err := http.Get(url)
+				if err != nil {
+					fmt.Printf("Ошибка HTTP для игры %d: %v\n", idx+1, err)
+					return
+				}
+				defer resp.Body.Close()
 
-		gameInfo[i].PS5Voice = ps5Voice
-		gameInfo[i].PS5ScreenLanguages = ps5ScreenLanguages
-		gameInfo[i].PS4Voice = ps4Voice
-		gameInfo[i].PS4ScreenLanguages = ps4ScreenLanguages
-		gameInfo[i].Voice = voice
-		gameInfo[i].ScreenLanguages = screenLanguages
+				respBody, err := goquery.NewDocumentFromReader(resp.Body)
+				if err != nil {
+					fmt.Printf("Ошибка парсинга для игры %d: %v\n", idx+1, err)
+					return
+				}
 
-		// Сохраняем после каждой игры
+				ps5Voice := respBody.Find("[data-qa$='#ps5Voice-value']").Text()
+				ps5ScreenLanguages := respBody.Find("[data-qa$='#ps5Subtitles-value']").Text()
+
+				ps4Voice := respBody.Find("[data-qa$='#ps4Voice-value']").Text()
+				ps4ScreenLanguages := respBody.Find("[data-qa$='#ps4Subtitles-value']").Text()
+
+				voice := respBody.Find("[data-qa$='#voice-value']").Text()
+				screenLanguages := respBody.Find("[data-qa$='#subtitles-value']").Text()
+
+				mu.Lock()
+				gameInfo[idx].PS5Voice = ps5Voice
+				gameInfo[idx].PS5ScreenLanguages = ps5ScreenLanguages
+				gameInfo[idx].PS4Voice = ps4Voice
+				gameInfo[idx].PS4ScreenLanguages = ps4ScreenLanguages
+				gameInfo[idx].Voice = voice
+				gameInfo[idx].ScreenLanguages = screenLanguages
+				fmt.Printf("Обработана игра %d/%d: %s\n", idx+1, len(gameInfo), game.Name)
+				mu.Unlock()
+			}(i)
+		}
+
+		wg.Wait()
+
+		mu.Lock()
 		if err := saveToJSON(gameInfo, filename); err != nil {
-			fmt.Printf("Ошибка сохранения после игры %d: %v\n", i+1, err)
+			fmt.Printf("Ошибка сохранения после batch %d-%d: %v\n", batchStart+1, batchEnd, err)
 		}
+		mu.Unlock()
 
-		fmt.Printf("Обработана игра %d/%d: %s\n", i+1, len(gameInfo), game.Name)
-		time.Sleep(time.Duration(1) * time.Second)
+		delay := rand.Intn(5) + 1
+		fmt.Printf("Задержка перед следующим batch: %d сек.\n\n", delay)
+		time.Sleep(time.Duration(delay) * time.Second)
 	}
 
 	return gameInfo
