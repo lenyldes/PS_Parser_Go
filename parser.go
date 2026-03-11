@@ -131,3 +131,47 @@ func parseGamesFromURL(url string) []GameInfo {
 
 	return games
 }
+
+func parseVoice(filename string) []GameInfo {
+	var result []GameInfo
+
+	gameInfo, _ := readFromJSON(filename)
+
+	for i, game := range gameInfo {
+		url := game.Link
+		resp, err := http.Get(url)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+
+		respBody, err := goquery.NewDocumentFromReader(resp.Body)
+		if err != nil {
+			panic(err)
+		}
+
+		ps5Voice := respBody.Find("[data-qa$='#ps5Voice-value']").Text()
+		ps5ScreenLanguages := respBody.Find("[data-qa$='#ps5Subtitles-value']").Text()
+
+		ps4Voice := respBody.Find("[data-qa$='#ps4Voice-value']").Text()
+		ps4ScreenLanguages := respBody.Find("[data-qa$='#ps5Subtitles-value']").Text()
+
+		voice := respBody.Find("[data-qa$='#voice-value']").Text()
+		screenLanguages := respBody.Find("[data-qa$='#subtitles-value']").Text()
+
+		gameInfo[i].PS5Voice = ps5Voice
+
+		gameInfo[i].PS5ScreenLanguages = ps5ScreenLanguages
+
+		gameInfo[i].PS4Voice = ps4Voice
+		gameInfo[i].PS4ScreenLanguages = ps4ScreenLanguages
+
+		gameInfo[i].Voice = voice
+		gameInfo[i].ScreenLanguages = screenLanguages
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+
+	saveToJSON(gameInfo, "out_2.json")
+
+	return result
+}

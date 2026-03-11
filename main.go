@@ -13,4 +13,6 @@ func main() {
 	fmt.Println("\n=== Результаты парсинга ===")
 	//printResultMap(games)
 	fmt.Printf("Всего собрано игр: %d\n", len(games))
+
+	parseVoice("out.json")
 }
