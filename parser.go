@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -36,40 +37,54 @@ func parseAllGamesFromURL(url string, start string, end string, filename string)
 	if lastSlash == -1 {
 		panic("неверный формат URL: отсутствует слеш")
 	}
-	baseURL := url[:lastSlash] // например: "https://.../category/3f772501-f6f8-49b7-abac-874a88ca4897"
+	baseURL := url[:lastSlash]
 
 	var allGames []GameInfo
+	var mu sync.Mutex
 
-	for i := startPage; i <= endPage; i++ {
-		pageURL := fmt.Sprintf("%s/%d", baseURL, i)
-		//fmt.Printf("Парсинг страницы %d: %s\n", i, pageURL)
+	for batchStart := startPage; batchStart <= endPage; batchStart += 4 {
+		batchEnd := batchStart + 3
+		if batchEnd > endPage {
+			batchEnd = endPage
+		}
 
-		games := parseGamesFromURL(pageURL)
+		var wg sync.WaitGroup
+		batchEmpty := false
 
-		// Если на странице нет игр, считаем, что достигли конца каталога
-		if len(games) == 0 {
-			fmt.Printf("На странице %d не найдено игр. Останавливаемся.\n", i)
-			// Сохраняем перед выходом
-			if err := saveToJSON(allGames, filename); err != nil {
-				fmt.Printf("Ошибка сохранения перед остановкой: %v\n", err)
-			}
+		for i := batchStart; i <= batchEnd; i++ {
+			wg.Add(1)
+			go func(pageNum int) {
+				defer wg.Done()
+
+				pageURL := fmt.Sprintf("%s/%d", baseURL, pageNum)
+				games := parseGamesFromURL(pageURL)
+
+				mu.Lock()
+				if len(games) == 0 {
+					batchEmpty = true
+				} else {
+					allGames = append(allGames, games...)
+				}
+				mu.Unlock()
+			}(i)
+		}
+
+		wg.Wait()
+
+		mu.Lock()
+		if err := saveToJSON(allGames, filename); err != nil {
+			fmt.Printf("Ошибка сохранения после страниц %d-%d: %v\n", batchStart, batchEnd, err)
+		}
+		mu.Unlock()
+
+		if batchEmpty {
+			fmt.Printf("На страницах %d-%d обнаружена пустая страница. Останавливаемся.\n", batchStart, batchEnd)
 			break
 		}
 
-		//fmt.Println("Найдено игр:", len(games))
-
-		// Добавляем игры к общему списку
-		allGames = append(allGames, games...)
-
-		// Сохраняем после каждой страницы
-		if err := saveToJSON(allGames, filename); err != nil {
-			fmt.Printf("Ошибка сохранения после страницы %d: %v\n", i, err)
-		}
-
-		delay := rand.Intn(5) + 1 // от 1 до 5 секунд
-		fmt.Printf("Задержка перед следующей страницей: %d\n\n", delay)
+		delay := rand.Intn(5) + 1
+		fmt.Printf("Задержка перед следующим batch: %d сек.\n\n", delay)
 		time.Sleep(time.Duration(delay) * time.Second)
-
 	}
 
 	return allGames
