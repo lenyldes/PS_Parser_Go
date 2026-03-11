@@ -12,23 +12,21 @@ import (
 )
 
 // printResultMap выводит результаты в консоль
-func printResultMap(resultMap map[string]map[string]string) {
-	fieldsOrder := []string{"link", "offerPrice", "originalPrice"} // Порядок полей
-
-	for name, data := range resultMap {
-		fmt.Printf("Имя: %s\n", name)
-		for _, field := range fieldsOrder {
-			if value, ok := data[field]; ok {
-				fmt.Printf("  %s: %s\n", field, value)
-			}
-		}
+func printResultMap(games []GameInfo) {
+	for _, game := range games {
+		fmt.Printf("Имя: %s\n", game.Name)
+		fmt.Printf("  link: %s\n", game.Link)
+		fmt.Printf("  offerPrice: %s\n", game.OfferPrice)
+		fmt.Printf("  originalPrice: %s\n", game.OriginalPrice)
+		fmt.Printf("  productType: %s\n", game.ProductType)
+		fmt.Printf("  imgURL: %s\n", game.ImgURL)
 		fmt.Println()
 	}
 }
 
 // parseAllGamesFromURL парсит все страницы от start до end (номера страниц подставляются в URL)
 // start и end — строки, пустые значения заменяются на "1" и "200" соответственно.
-func parseAllGamesFromURL(url string, start string, end string, filename string) map[string]map[string]string {
+func parseAllGamesFromURL(url string, start string, end string, filename string) []GameInfo {
 	// Устанавливаем значения по умолчанию
 	if start == "" {
 		start = "1"
@@ -53,33 +51,31 @@ func parseAllGamesFromURL(url string, start string, end string, filename string)
 	}
 	baseURL := url[:lastSlash] // например: "https://.../category/3f772501-f6f8-49b7-abac-874a88ca4897"
 
-	resultMap := make(map[string]map[string]string)
+	var allGames []GameInfo
 
 	for i := startPage; i <= endPage; i++ {
 		pageURL := fmt.Sprintf("%s/%d", baseURL, i)
 		//fmt.Printf("Парсинг страницы %d: %s\n", i, pageURL)
 
-		tmpMap := parseGamesFromURL(pageURL)
+		games := parseGamesFromURL(pageURL)
 
 		// Если на странице нет игр, считаем, что достигли конца каталога
-		if len(tmpMap) == 0 {
+		if len(games) == 0 {
 			fmt.Printf("На странице %d не найдено игр. Останавливаемся.\n", i)
 			// Сохраняем перед выходом
-			if err := saveToJSON(resultMap, filename); err != nil {
+			if err := saveToJSON(allGames, filename); err != nil {
 				fmt.Printf("Ошибка сохранения перед остановкой: %v\n", err)
 			}
 			break
 		}
 
-		//fmt.Println("Найдено игр:", len(tmpMap))
+		//fmt.Println("Найдено игр:", len(games))
 
-		// Объединяем карты (если имя повторяется, данные перезапишутся)
-		for name, data := range tmpMap {
-			resultMap[name] = data
-		}
+		// Добавляем игры к общему списку
+		allGames = append(allGames, games...)
 
 		// Сохраняем после каждой страницы
-		if err := saveToJSON(resultMap, filename); err != nil {
+		if err := saveToJSON(allGames, filename); err != nil {
 			fmt.Printf("Ошибка сохранения после страницы %d: %v\n", i, err)
 		}
 
@@ -89,11 +85,11 @@ func parseAllGamesFromURL(url string, start string, end string, filename string)
 
 	}
 
-	return resultMap
+	return allGames
 }
 
-// parseGamesFromURL парсит одну страницу и возвращает карту с данными об играх
-func parseGamesFromURL(url string) map[string]map[string]string {
+// parseGamesFromURL парсит одну страницу и возвращает массив с данными об играх
+func parseGamesFromURL(url string) []GameInfo {
 	resp, err := http.Get(url)
 	if err != nil {
 		panic(err)
@@ -110,7 +106,7 @@ func parseGamesFromURL(url string) map[string]map[string]string {
 	fmt.Println("На странице:", url)
 	fmt.Println("Найдено элементов:", productNameSelection.Length())
 
-	resultMap := make(map[string]map[string]string)
+	var games []GameInfo
 
 	productNameSelection.Each(func(i int, s *goquery.Selection) {
 		name := strings.TrimSpace(s.Text())
@@ -132,24 +128,26 @@ func parseGamesFromURL(url string) map[string]map[string]string {
 		originalPrice := divClass.Find("[data-qa$='#price#price-strikethrough']").Text()
 		productType := divClass.Find("span[data-qa$='#product-type']").Text()
 
-		resultMap[name] = make(map[string]string)
-		resultMap[name]["link"] = "https://store.playstation.com" + href
-		resultMap[name]["offerPrice"] = offerPrice
-		resultMap[name]["originalPrice"] = originalPrice
-		resultMap[name]["productType"] = productType
-		resultMap[name]["imgURL"] = fixImgURL
+		games = append(games, GameInfo{
+			Name:          name,
+			Link:          "https://store.playstation.com" + href,
+			ImgURL:        fixImgURL,
+			OfferPrice:    offerPrice,
+			OriginalPrice: originalPrice,
+			ProductType:   productType,
+		})
 	})
 
-	return resultMap
+	return games
 }
 
 func main() {
 	fmt.Println("\nЗапуск парсинга...")
 	url, start, end := getUserInput()
 
-	resultMap := parseAllGamesFromURL(url, start, end, "out.json")
+	games := parseAllGamesFromURL(url, start, end, "out.json")
 
 	fmt.Println("\n=== Результаты парсинга ===")
-	//printResultMap(resultMap)
-	fmt.Printf("Всего собрано игр: %d\n", len(resultMap))
+	//printResultMap(games)
+	fmt.Printf("Всего собрано игр: %d\n", len(games))
 }

@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-type Game struct {
+type GameInfo struct {
 	Name          string `json:"name"`
 	Link          string `json:"link"`
 	ImgURL        string `json:"imgURL"`
@@ -15,20 +15,7 @@ type Game struct {
 }
 
 // saveToJSON сохраняет результат в JSON-файл
-func saveToJSON(resultMap map[string]map[string]string, filename string) error {
-
-	var games []Game
-	for name, data := range resultMap {
-		games = append(games, Game{
-			Name:          name,
-			Link:          data["link"],
-			ImgURL:        data["imgURL"],
-			OfferPrice:    data["offerPrice"],
-			OriginalPrice: data["originalPrice"],
-			ProductType:   data["productType"],
-		})
-	}
-
+func saveToJSON(games []GameInfo, filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -40,30 +27,19 @@ func saveToJSON(resultMap map[string]map[string]string, filename string) error {
 	return encoder.Encode(games)
 }
 
-// readFromJSON читает данные из JSON-файла и возвращает карту с данными об играх
-func readFromJSON(filename string) (map[string]map[string]string, error) {
+// readFromJSON читает данные из JSON-файла и возвращает массив с данными об играх
+func readFromJSON(filename string) ([]GameInfo, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	var games []Game
+	var games []GameInfo
 	err = json.NewDecoder(file).Decode(&games)
 	if err != nil {
 		return nil, err
 	}
 
-	resultMap := make(map[string]map[string]string)
-	for _, game := range games {
-		resultMap[game.Name] = map[string]string{
-			"link":          game.Link,
-			"imgURL":        game.ImgURL,
-			"offerPrice":    game.OfferPrice,
-			"originalPrice": game.OriginalPrice,
-			"productType":   game.ProductType,
-		}
-	}
-
-	return resultMap, nil
+	return games, nil
 }
