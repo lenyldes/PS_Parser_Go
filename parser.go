@@ -133,8 +133,6 @@ func parseGamesFromURL(url string) []GameInfo {
 }
 
 func parseVoice(filename string) []GameInfo {
-	var result []GameInfo
-
 	gameInfo, _ := readFromJSON(filename)
 
 	for i, game := range gameInfo {
@@ -154,24 +152,26 @@ func parseVoice(filename string) []GameInfo {
 		ps5ScreenLanguages := respBody.Find("[data-qa$='#ps5Subtitles-value']").Text()
 
 		ps4Voice := respBody.Find("[data-qa$='#ps4Voice-value']").Text()
-		ps4ScreenLanguages := respBody.Find("[data-qa$='#ps5Subtitles-value']").Text()
+		ps4ScreenLanguages := respBody.Find("[data-qa$='#ps4Subtitles-value']").Text()
 
 		voice := respBody.Find("[data-qa$='#voice-value']").Text()
 		screenLanguages := respBody.Find("[data-qa$='#subtitles-value']").Text()
 
 		gameInfo[i].PS5Voice = ps5Voice
-
 		gameInfo[i].PS5ScreenLanguages = ps5ScreenLanguages
-
 		gameInfo[i].PS4Voice = ps4Voice
 		gameInfo[i].PS4ScreenLanguages = ps4ScreenLanguages
-
 		gameInfo[i].Voice = voice
 		gameInfo[i].ScreenLanguages = screenLanguages
+
+		// Сохраняем после каждой игры
+		if err := saveToJSON(gameInfo, filename); err != nil {
+			fmt.Printf("Ошибка сохранения после игры %d: %v\n", i+1, err)
+		}
+
+		fmt.Printf("Обработана игра %d/%d: %s\n", i+1, len(gameInfo), game.Name)
 		time.Sleep(time.Duration(1) * time.Second)
 	}
 
-	saveToJSON(gameInfo, "out_2.json")
-
-	return result
+	return gameInfo
 }
